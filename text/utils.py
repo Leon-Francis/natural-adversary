@@ -273,7 +273,7 @@ class SNLIDataset(data.Dataset):
             self.make_vocab()
             
         if os.path.exists(self.root+"/sent_ids.pkl"):
-            self.sentence_ids = pkl.load(open(self.root+"/sent_ids.pkl",'r'))
+            self.sentence_ids = pkl.load(open(self.root+"/sent_ids.pkl",'rb'))
         else:
             print("Sentence IDs not found!!")
             
@@ -312,8 +312,8 @@ class SNLIDataset(data.Dataset):
 
         # prune the vocabulary
         self.dictionary.prune_vocab(k=self.vocab_size, cnt=False)
-        pkl.dump(self.sentence_ids, open(self.root+"/sent_ids.pkl", 'w'))
-        pkl.dump(self.dictionary.word2idx, open(self.root+"/vocab_"+str(len(self.dictionary.word2idx))+".pkl", 'w'))
+        pkl.dump(self.sentence_ids, open(self.root+"/sent_ids.pkl", 'wb'))
+        pkl.dump(self.dictionary.word2idx, open(self.root+"/vocab_"+str(len(self.dictionary.word2idx))+".pkl", 'wb'))
 
     def get_indices(self, words):
         vocab = self.dictionary.word2idx
@@ -386,7 +386,7 @@ class SNLIDataset(data.Dataset):
 def load_embeddings(root = './data/classifier/'):
     vocab_path=root+'vocab.pkl'
     file_path=root+'embeddings'
-    vocab = pkl.load(open(vocab_path, 'r'))
+    vocab = pkl.load(open(vocab_path, 'rb'))
     
     embeddings = torch.FloatTensor(len(vocab),100).uniform_(-0.1, 0.1)
     embeddings[0].fill_(0)
