@@ -106,7 +106,6 @@ class Corpus(object):
                 else:
                     words = line[:-1].split(" ")
                 for word in words:
-                    word = word.decode('Windows-1252').encode('utf-8')
                     self.dictionary.add_word(word)
 
         # prune the vocabulary
@@ -391,14 +390,14 @@ def load_embeddings(root = './data/classifier/'):
     embeddings = torch.FloatTensor(len(vocab),100).uniform_(-0.1, 0.1)
     embeddings[0].fill_(0)
     embeddings[1].copy_(torch.FloatTensor(
-        map(float, open(file_path).read().split('\n')[0].strip().split(" ")[1:])))
+        list(map(float, open(file_path).read().split('\n')[0].strip().split(" ")[1:]))))
     embeddings[2].copy_(embeddings[1])
     
     with open(file_path) as fr:
         for line in fr:
             elements=line.strip().split(" ")
             word = elements[0]
-            emb = torch.FloatTensor(map(float, elements[1:]))
+            emb = torch.FloatTensor(list(map(float, elements[1:])))
             if word in vocab:
                 embeddings[vocab[word]].copy_(emb)
             

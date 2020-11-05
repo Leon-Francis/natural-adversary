@@ -176,7 +176,7 @@ def train_ae(batch, total_loss_ae, start_time, i,
     loss.backward()
 
     # `clip_grad_norm` to prevent exploding gradient in RNNs / LSTMs
-    torch.nn.utils.clip_grad_norm(autoencoder.parameters(), args.clip)
+    torch.nn.utils.clip_grad_norm_(autoencoder.parameters(), args.clip)
     optimizer_ae.step()
 
     total_loss_ae += loss.data
@@ -232,7 +232,7 @@ def train_gan_d(batch,
 
     # loss / backprop
     errD_real = gan_disc(real_hidden)
-    errD_real.backward(one)
+    errD_real.backward()
 
     # negative samples ----------------------------
     # generate fake codes
@@ -242,6 +242,7 @@ def train_gan_d(batch,
     # loss / backprop
     fake_hidden = gan_gen(noise)
     errD_fake = gan_disc(fake_hidden.detach())
+    # TODO:debug hear
     errD_fake.backward(mone)
 
     # `clip_grad_norm` to prevent exploding gradient problem in RNNs / LSTMs
@@ -636,8 +637,7 @@ def perturb(data_source, epoch, corpus_test, hybrid=False):
                     f.write("========================================================\n")
                     f.write("\n".join(all_adv) + "\n")
                     f.flush()
-                except Exception, e:
-                    print(e)
+                except Exception:
                     print(premise_words)
                     print(hypothesise_words)
                     print("no adversary found for : \n {0} \n {1}\n\n". \
@@ -652,7 +652,7 @@ def perturb(data_source, epoch, corpus_test, hybrid=False):
 if __name__ == '__main__':
 
     args = parse_args()
-    print(vars(args))
+    # print(vars(args))
 
     if torch.cuda.is_available() and not args.cuda:
         print("WARNING: You have a CUDA device, so you should probably run with --cuda")
@@ -723,11 +723,11 @@ if __name__ == '__main__':
 
     classifier1 = Baseline_Embeddings(100, vocab_size=args.vocab_size+4)
     classifier1.load_state_dict(torch.load(args.classifier_path + "/baseline/model_emb.pt"))
-    vocab_classifier1 = pkl.load(open(args.classifier_path + "/vocab.pkl", 'r'))
+    vocab_classifier1 = pkl.load(open(args.classifier_path + "/vocab.pkl", 'rb'))
 
     classifier2 = Baseline_LSTM(100, 300, maxlen=10, gpu=args.cuda)
     classifier2.load_state_dict(torch.load(args.classifier_path + "/baseline/model_lstm.pt"))
-    vocab_classifier2 = pkl.load(open(args.classifier_path + "/vocab.pkl", 'r'))
+    vocab_classifier2 = pkl.load(open(args.classifier_path + "/vocab.pkl", 'rb'))
 
     print("Loaded data and target classifiers!")
 
@@ -776,7 +776,7 @@ if __name__ == '__main__':
         gan_disc = MLP_D(ninput=args.nhidden, noutput=1, layers=args.arch_d)
         # dumping vocabulary
         with open('./output/{}/vocab.json'.format(args.outf), 'w') as f:
-            json.dump(corpus.dictionary.word2idx, f, encoding='utf-8')
+            json.dump(corpus.dictionary.word2idx, f)
 
     print(autoencoder)
     print(inverter)
