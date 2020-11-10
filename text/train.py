@@ -184,11 +184,11 @@ def train_ae(batch, total_loss_ae, start_time, i,
     accuracy = None
     if i % args.log_interval == 0 and i > 0:
         # accuracy
-        probs = F.softmax(masked_output)
+        probs = F.softmax(masked_outputn, dim=1)
         max_vals, max_indices = torch.max(probs, 1)
-        accuracy = torch.mean(max_indices.eq(masked_target).float()).data[0]
+        accuracy = torch.mean(max_indices.eq(masked_target).float()).data.item()
 
-        cur_loss = total_loss_ae[0] / args.log_interval
+        cur_loss = total_loss_ae.data.item() / args.log_interval
         elapsed = time.time() - start_time
         print('| epoch {:3d} | {:5d}/{:5d} batches | ms/batch {:5.2f} | '
               'loss {:5.2f} | ppl {:8.2f} | acc {:8.2f}'
@@ -243,10 +243,11 @@ def train_gan_d(batch,
     fake_hidden = gan_gen(noise)
     errD_fake = gan_disc(fake_hidden.detach())
     # TODO:debug hear
-    errD_fake.backward(mone)
+    errD_fake *= -1.0
+    errD_fake.backward()
 
     # `clip_grad_norm` to prevent exploding gradient problem in RNNs / LSTMs
-    torch.nn.utils.clip_grad_norm(autoencoder.parameters(), args.clip)
+    torch.nn.utils.clip_grad_norm_(autoencoder.parameters(), args.clip)
 
     optimizer_gan_d.step()
     optimizer_ae.step()
@@ -266,7 +267,7 @@ def train_gan_g(args, gan_gen, gan_disc, optimizer_gan_g):
     errG = gan_disc(fake_hidden)
 
     # loss / backprop
-    errG.backward(one)
+    errG.backward()
     optimizer_gan_g.step()
 
     return errG
@@ -317,7 +318,7 @@ def train_inv(data_batch, args, autoencoder, gan_gen, inverter, optimizer_inv,
         errI = criterion_mse(inv_noise, noise)
 
     # `clip_grad_norm` to prevent exploding gradient in RNNs / LSTMs
-    torch.nn.utils.clip_grad_norm(autoencoder.parameters(), args.clip)
+    torch.nn.utils.clip_grad_norm_(autoencoder.parameters(), args.clip)
 
     # loss / backprop
     errI.backward()
@@ -484,7 +485,7 @@ def evaluate_autoencoder(data_source, epoch,
 
         # accuracy
         max_vals, max_indices = torch.max(masked_output, 1)
-        all_accuracies += torch.mean(max_indices.eq(masked_target).float()).data[0]
+        all_accuracies += torch.mean(max_indices.eq(masked_target).float()).data.item()
         bcnt += 1
 
         aeoutf = "./output/{}/{}_autoencoder.txt".format(args.outf, epoch)
@@ -502,36 +503,27 @@ def evaluate_autoencoder(data_source, epoch,
                 f.write(chars)
                 f.write("\n\n")
 
-    return total_loss[0] / len(data_source), all_accuracies/bcnt
+    return total_loss.item() / len(data_source), all_accuracies/bcnt
 
 
 def save_model(args, autoencoder, gan_gen, gan_disc, inverter, epoch=None):
-  if not epoch and args.load_pretrained:
-    with open('./output/{0}/{1}/inverter_model.pt'.format(args.outf+"/models",epoch), 'wb') as f:
-      torch.save(inverter, f)
+    if not epoch and args.load_pretrained:
+        torch.save(inverter.state_dict(), './output/{0}/{1}/inverter_model.pt'.format(args.outf+"/models",epoch))
     return
-  if epoch and epoch%5==0:
-    print("Saving models")
-    if not os.path.isdir('./output/{}'.format(epoch)):
-      os.makedirs('./output/{0}/{1}'.format(args.outf+"/models",epoch))
-    with open('./output/{0}/{1}/autoencoder_model.pt'.format(args.outf+"/models",epoch), 'wb') as f:
-      torch.save(autoencoder, f)
-    with open('./output/{0}/{1}/inverter_model.pt'.format(args.outf+"/models",epoch), 'wb') as f:
-      torch.save(inverter, f)
-    with open('./output/{0}/{1}/gan_gen_model.pt'.format(args.outf+"/models",epoch), 'wb') as f:
-      torch.save(gan_gen, f)
-    with open('./output/{0}/{1}/gan_disc_model.pt'.format(args.outf+"/models",epoch), 'wb') as f:
-      torch.save(gan_disc, f)
-  else:
-    print("Saving models")
-    with open('./output/{0}/autoencoder_model.pt'.format(args.outf+"/models"), 'wb') as f:
-      torch.save(autoencoder, f)
-    with open('./output/{0}/inverter_model.pt'.format(args.outf+"/models"), 'wb') as f:
-      torch.save(inverter, f)
-    with open('./output/{0}/gan_gen_model.pt'.format(args.outf+"/models"), 'wb') as f:
-      torch.save(gan_gen, f)
-    with open('./output/{0}/gan_disc_model.pt'.format(args.outf+"/models"), 'wb') as f:
-      torch.save(gan_disc, f)
+    if epoch and epoch % 5==0:
+        print("Saving models")
+        if not os.path.isdir('./output/{}'.format(epoch)):
+            os.makedirs('./output/{0}/{1}'.format(args.outf+"/models",epoch))
+        torch.save(autoencoder.state_dict(), './output/{0}/{1}/autoencoder_model.pt'.format(args.outf+"/models",epoch))
+        torch.save(inverter.state_dict(), './output/{0}/{1}/inverter_model.pt'.format(args.outf+"/models",epoch))
+        torch.save(gan_gen.state_dict(), './output/{0}/{1}/gan_gen_model.pt'.format(args.outf+"/models",epoch))
+        torch.save(gan_disc.state_dict(), './output/{0}/{1}/gan_disc_model.pt'.format(args.outf+"/models",epoch))
+    else:
+        print("Saving models")
+        torch.save(autoencoder.state_dict(), './output/{0}/autoencoder_model.pt'.format(args.outf+"/models"))
+        torch.save(inverter.state_dict(), './output/{0}/inverter_model.pt'.format(args.outf+"/models"))
+        torch.save(gan_gen.state_dict(), './output/{0}/gan_gen_model.pt'.format(args.outf+"/models"))
+        torch.save(gan_disc.state_dict(), './output/{0}/gan_disc_model.pt'.format(args.outf+"/models"))
 
 
 def pred_fn(data):
@@ -915,14 +907,14 @@ if __name__ == '__main__':
                     print('[%d/%d][%d/%d] Loss_D: %.8f (Loss_D_real: %.8f '
                           'Loss_D_fake: %.8f) Loss_G: %.8f Loss_I: %.8f'
                           % (epoch, args.epochs, niter, len(train_data),
-                             errD.data[0], errD_real.data[0],
-                             errD_fake.data[0], errG.data[0], errI.data[0]))
+                             errD.data.item(), errD_real.data.item(),
+                             errD_fake.data.item(), errG.data.item(), errI.data.item()))
                     with open("./output/{}/logs.txt".format(args.outf), 'a') as f:
                         f.write('[%d/%d][%d/%d] Loss_D: %.8f (Loss_D_real: %.8f '
                                 'Loss_D_fake: %.8f) Loss_G: %.8f Loss_I: %.8f\n'
                                 % (epoch, args.epochs, niter, len(train_data),
-                                   errD.data[0], errD_real.data[0],
-                                   errD_fake.data[0], errG.data[0], errI.data[0]))
+                                   errD.data.item(), errD_real.data.item(),
+                                   errD_fake.data.item(), errG.data.item(), errI.data.item()))
 
                     # exponentially decaying noise on autoencoder
                     autoencoder.noise_radius = autoencoder.noise_radius * args.noise_anneal
@@ -959,7 +951,7 @@ if __name__ == '__main__':
                 if niter_global % 100 == 0:
                     with open("./output/{}/logs.txt".format(args.outf), 'a') as f:
                         f.write('[%d/%d][%d/%d] Loss_I: %.8f \n'
-                                % (epoch, args.epochs, niter, len(train_data), errI.data[0]))
+                                % (epoch, args.epochs, niter, len(train_data), errI.data.item()))
 
         # end of epoch ----------------------------
         # evaluation

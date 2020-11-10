@@ -313,7 +313,7 @@ class Seq2SeqCAE(nn.Module):
                 vals, indices = torch.max(overvocab, 1)
             else:
                 # sampling
-                probs = F.softmax(overvocab/temp)
+                probs = F.softmax(overvocab/temp, dim=1)
                 indices = torch.multinomial(probs, 1)
 
             if indices.ndimension()==1:
@@ -597,7 +597,7 @@ class Seq2Seq(nn.Module):
                 vals, indices = torch.max(overvocab, 1)
             else:
                 # sampling
-                probs = F.softmax(overvocab/temp)
+                probs = F.softmax(overvocab/temp, dim=1)
                 indices = torch.multinomial(probs, 1)
 
             if indices.ndimension()==1:
