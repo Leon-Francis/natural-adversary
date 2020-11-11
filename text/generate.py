@@ -18,30 +18,31 @@ def interpolate(ae, gg, z1, z2, vocab,
     Interpolating in z space
     Assumes that type(z1) == type(z2)
     """
-    if type(z1) == Variable:
-        noise1 = z1
-        noise2 = z2
-    elif type(z1) == torch.FloatTensor or type(z1) == torch.cuda.FloatTensor:
-        noise1 = Variable(z1, volatile=True)
-        noise2 = Variable(z2, volatile=True)
-    elif type(z1) == np.ndarray:
-        noise1 = Variable(torch.from_numpy(z1).float(), volatile=True)
-        noise2 = Variable(torch.from_numpy(z2).float(), volatile=True)
-    else:
-        raise ValueError("Unsupported input type (noise): {}".format(type(z1)))
+    with torch.no_grad():
+        if type(z1) == Variable:
+            noise1 = z1
+            noise2 = z2
+        elif type(z1) == torch.FloatTensor or type(z1) == torch.cuda.FloatTensor:
+            noise1 = Variable(z1)
+            noise2 = Variable(z2)
+        elif type(z1) == np.ndarray:
+            noise1 = Variable(torch.from_numpy(z1).float())
+            noise2 = Variable(torch.from_numpy(z2).float())
+        else:
+            raise ValueError("Unsupported input type (noise): {}".format(type(z1)))
 
-    # interpolation weights
-    lambdas = [x*1.0/(steps-1) for x in range(steps)]
+        # interpolation weights
+        lambdas = [x*1.0/(steps-1) for x in range(steps)]
 
-    gens = []
-    for L in lambdas:
-        gens.append(generate(ae, gg, (1-L)*noise1 + L*noise2,
-                             vocab, sample, maxlen))
+        gens = []
+        for L in lambdas:
+            gens.append(generate(ae, gg, (1-L)*noise1 + L*noise2,
+                                vocab, sample, maxlen))
 
-    interpolations = []
-    for i in range(len(gens[0])):
-        interpolations.append([s[i] for s in gens])
-    return interpolations
+        interpolations = []
+        for i in range(len(gens[0])):
+            interpolations.append([s[i] for s in gens])
+        return interpolations
 
 
 def main(args):

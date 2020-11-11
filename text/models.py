@@ -297,8 +297,9 @@ class Seq2SeqCAE(nn.Module):
         if not self.gpu:
             self.start_symbols = self.start_symbols.cpu()
         # <sos>
-        self.start_symbols.data.resize_(batch_size, 1)
-        self.start_symbols.data.fill_(1)
+        with torch.no_grad():
+            self.start_symbols.resize_(batch_size, 1)
+            self.start_symbols.fill_(1)
 
         embedding = self.embedding_decoder(self.start_symbols)
         inputs = torch.cat([embedding, hidden.unsqueeze(1)], 2)
@@ -581,8 +582,9 @@ class Seq2Seq(nn.Module):
             state = self.init_hidden(batch_size)
 
         # <sos>
-        self.start_symbols.data.resize_(batch_size, 1)
-        self.start_symbols.data.fill_(1)
+        with torch.no_grad():
+            self.start_symbols.resize_(batch_size, 1)
+            self.start_symbols.fill_(1)
 
         embedding = self.embedding_decoder(self.start_symbols)
         inputs = torch.cat([embedding, hidden.unsqueeze(1)], 2)
@@ -634,38 +636,39 @@ def generate(autoencoder, gan_gen, z, vocab, sample, maxlen):
     """
     Assume noise is batch_size x z_size
     """
-    if type(z) == Variable:
-        noise = z
-    elif type(z) == torch.FloatTensor or type(z) == torch.cuda.FloatTensor:
-        noise = Variable(z, volatile=True)
-    elif type(z) == np.ndarray:
-        noise = Variable(torch.from_numpy(z).float(), volatile=True)
-    else:
-        raise ValueError("Unsupported input type (noise): {}".format(type(z)))
+    with torch.no_grad():
+        if type(z) == Variable:
+            noise = z
+        elif type(z) == torch.FloatTensor or type(z) == torch.cuda.FloatTensor:
+            noise = Variable(z)
+        elif type(z) == np.ndarray:
+            noise = Variable(torch.from_numpy(z).float())
+        else:
+            raise ValueError("Unsupported input type (noise): {}".format(type(z)))
 
-    gan_gen.eval()
-    autoencoder.eval()
+        gan_gen.eval()
+        autoencoder.eval()
 
-    # generate from random noise
-    fake_hidden = gan_gen(noise)
-    max_indices = autoencoder.generate(hidden=fake_hidden,
-                                       maxlen=maxlen,
-                                       sample=sample)
+        # generate from random noise
+        fake_hidden = gan_gen(noise)
+        max_indices = autoencoder.generate(hidden=fake_hidden,
+                                            maxlen=maxlen,
+                                            sample=sample)
 
-    max_indices = max_indices.data.cpu().numpy()
-    sentences = []
-    for idx in max_indices:
-        # generated sentence
-        words = [vocab[x] for x in idx]
-        # truncate sentences to first occurrence of <eos>
-        truncated_sent = []
-        for w in words:
-            if w != '<eos>':
-                truncated_sent.append(w)
-            else:
-                break
-        sent = " ".join(truncated_sent)
-        sentences.append(sent)
+        max_indices = max_indices.data.cpu().numpy()
+        sentences = []
+        for idx in max_indices:
+            # generated sentence
+            words = [vocab[x] for x in idx]
+            # truncate sentences to first occurrence of <eos>
+            truncated_sent = []
+            for w in words:
+                if w != '<eos>':
+                    truncated_sent.append(w)
+                else:
+                    break
+            sent = " ".join(truncated_sent)
+            sentences.append(sent)
 
     return sentences
 

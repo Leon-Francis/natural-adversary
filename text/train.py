@@ -422,87 +422,86 @@ def evaluate_inverter(data_source, epoch,
     inverter.eval()
     gan_gen.eval()
     gan_disc.eval()
+    with torch.no_grad():
+        for batch in data_source:
+            source, target, lengths = batch
+            source = to_gpu(args.cuda, Variable(source))
+            target = to_gpu(args.cuda, Variable(target))
 
-    for batch in data_source:
-        source, target, lengths = batch
-        source = to_gpu(args.cuda, Variable(source, volatile=True))
-        target = to_gpu(args.cuda, Variable(target, volatile=True))
+            # sentence -> encoder -> decoder
+            hidden = autoencoder.encode(source, lengths, noise=True)
+            ae_indices = autoencoder.generate(hidden, args.maxlen, args.sample)
 
-        # sentence -> encoder -> decoder
-        hidden = autoencoder.encode(source, lengths, noise=True)
-        ae_indices = autoencoder.generate(hidden, args.maxlen, args.sample)
+            # sentence -> encoder -> inverter -> generator -> decoder
+            inv_z = inverter(hidden)
+            inv_hidden = gan_gen(inv_z)
+            eigd_indices = autoencoder.generate(inv_hidden, args.maxlen, args.sample)
 
-        # sentence -> encoder -> inverter -> generator -> decoder
-        inv_z = inverter(hidden)
-        inv_hidden = gan_gen(inv_z)
-        eigd_indices = autoencoder.generate(inv_hidden, args.maxlen, args.sample)
-
-        with open("./output/{}/{}_inverter.txt".format(args.outf, epoch), "a") as f:
-            target = target.view(ae_indices.size(0), -1).data.cpu().numpy()
-            ae_indices = ae_indices.data.cpu().numpy()
-            eigd_indices = eigd_indices.data.cpu().numpy()
-            for t, ae, eigd in zip(target, ae_indices, eigd_indices):
-                # real sentence
-                f.write("# # # original sentence # # #\n")
-                chars = " ".join([corpus.dictionary.idx2word[x] for x in t])
-                f.write(chars)
-                # autoencoder output sentence
-                f.write("\n# # # sentence -> encoder -> decoder # # #\n")
-                chars = " ".join([corpus.dictionary.idx2word[x] for x in ae])
-                f.write(chars)
-                # corresponding GAN sentence
-                f.write("\n# # # sentence -> encoder -> inverter -> generator "
-                        "-> decoder # # #\n")
-                chars = " ".join([corpus.dictionary.idx2word[x] for x in eigd])
-                f.write(chars)
-                f.write("\n\n")
+            with open("./output/{}/{}_inverter.txt".format(args.outf, epoch), "a") as f:
+                target = target.view(ae_indices.size(0), -1).data.cpu().numpy()
+                ae_indices = ae_indices.data.cpu().numpy()
+                eigd_indices = eigd_indices.data.cpu().numpy()
+                for t, ae, eigd in zip(target, ae_indices, eigd_indices):
+                    # real sentence
+                    f.write("# # # original sentence # # #\n")
+                    chars = " ".join([corpus.dictionary.idx2word[x] for x in t])
+                    f.write(chars)
+                    # autoencoder output sentence
+                    f.write("\n# # # sentence -> encoder -> decoder # # #\n")
+                    chars = " ".join([corpus.dictionary.idx2word[x] for x in ae])
+                    f.write(chars)
+                    # corresponding GAN sentence
+                    f.write("\n# # # sentence -> encoder -> inverter -> generator "
+                            "-> decoder # # #\n")
+                    chars = " ".join([corpus.dictionary.idx2word[x] for x in eigd])
+                    f.write(chars)
+                    f.write("\n\n")
 
 
 def evaluate_autoencoder(data_source, epoch,
                          args, autoencoder, criterion_ce, corpus):
     # Turn on evaluation mode which disables dropout.
     autoencoder.eval()
-    total_loss = 0
-    ntokens = len(corpus.dictionary.word2idx)
-    all_accuracies = 0
-    bcnt = 0
-    for i, batch in enumerate(data_source):
-        source, target, lengths = batch
-        source = to_gpu(args.cuda, Variable(source, volatile=True))
-        target = to_gpu(args.cuda, Variable(target, volatile=True))
+    with torch.no_grad():
+        total_loss = 0
+        ntokens = len(corpus.dictionary.word2idx)
+        all_accuracies = 0
+        bcnt = 0
+        for i, batch in enumerate(data_source):
+            source, target, lengths = batch
+            source = to_gpu(args.cuda, Variable(source))
+            target = to_gpu(args.cuda, Variable(target))
+            mask = target.gt(0)
+            masked_target = target.masked_select(mask)
+            # examples x ntokens
+            output_mask = mask.unsqueeze(1).expand(mask.size(0), ntokens)
 
-        mask = target.gt(0)
-        masked_target = target.masked_select(mask)
-        # examples x ntokens
-        output_mask = mask.unsqueeze(1).expand(mask.size(0), ntokens)
+            # output: batch x seq_len x ntokens
+            output = autoencoder(source, lengths, noise=True)
+            flattened_output = output.view(-1, ntokens)
 
-        # output: batch x seq_len x ntokens
-        output = autoencoder(source, lengths, noise=True)
-        flattened_output = output.view(-1, ntokens)
+            masked_output = flattened_output.masked_select(output_mask).view(-1, ntokens)
+            total_loss += criterion_ce(masked_output/args.temp, masked_target).data
 
-        masked_output = flattened_output.masked_select(output_mask).view(-1, ntokens)
-        total_loss += criterion_ce(masked_output/args.temp, masked_target).data
+            # accuracy
+            max_vals, max_indices = torch.max(masked_output, 1)
+            all_accuracies += torch.mean(max_indices.eq(masked_target).float()).data.item()
+            bcnt += 1
 
-        # accuracy
-        max_vals, max_indices = torch.max(masked_output, 1)
-        all_accuracies += torch.mean(max_indices.eq(masked_target).float()).data.item()
-        bcnt += 1
-
-        aeoutf = "./output/{}/{}_autoencoder.txt".format(args.outf, epoch)
-        with open(aeoutf, "a") as f:
-            max_values, max_indices = torch.max(output, 2)
-            max_indices = max_indices.view(output.size(0), -1).data.cpu().numpy()
-            target = target.view(output.size(0), -1).data.cpu().numpy()
-            for t, idx in zip(target, max_indices):
-                # real sentence
-                chars = " ".join([corpus.dictionary.idx2word[x] for x in t])
-                f.write(chars)
-                f.write("\n")
-                # autoencoder output sentence
-                chars = " ".join([corpus.dictionary.idx2word[x] for x in idx])
-                f.write(chars)
-                f.write("\n\n")
-
+            aeoutf = "./output/{}/{}_autoencoder.txt".format(args.outf, epoch)
+            with open(aeoutf, "a") as f:
+                max_values, max_indices = torch.max(output, 2)
+                max_indices = max_indices.view(output.size(0), -1).data.cpu().numpy()
+                target = target.view(output.size(0), -1).data.cpu().numpy()
+                for t, idx in zip(target, max_indices):
+                    # real sentence
+                    chars = " ".join([corpus.dictionary.idx2word[x] for x in t])
+                    f.write(chars)
+                    f.write("\n")
+                    # autoencoder output sentence
+                    chars = " ".join([corpus.dictionary.idx2word[x] for x in idx])
+                    f.write(chars)
+                    f.write("\n\n")
     return total_loss.item() / len(data_source), all_accuracies/bcnt
 
 

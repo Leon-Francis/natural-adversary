@@ -14,44 +14,44 @@ def perturb(data_batch, autoencoder, vocab, sample, maxlen,
             left=0., right=1., n_samples=5, epoch=0, gpu=True):
 
     autoencoder.eval()
+    with torch.no_grad():
+        source, target, lengths = data_batch
+        source = to_gpu(gpu, Variable(source)
+        target = to_gpu(gpu, Variable(target)
 
-    source, target, lengths = data_batch
-    source = to_gpu(gpu, Variable(source, volatile=True))
-    target = to_gpu(gpu, Variable(target, volatile=True))
+        hidden = autoencoder.encode(source, lengths, noise=True)
+        hidden_data = hidden.data
+        # n = hidden_data.size()[0]
 
-    hidden = autoencoder.encode(source, lengths, noise=True)
-    hidden_data = hidden.data
-    # n = hidden_data.size()[0]
+        c = hidden_data[0].repeat(n_samples, 1)
+        delta = to_gpu(gpu, torch.FloatTensor(c.size()).uniform_(left, right))
+        c_delta = Variable(c + delta)
 
-    c = hidden_data[0].repeat(n_samples, 1)
-    delta = to_gpu(gpu, torch.FloatTensor(c.size()).uniform_(left, right))
-    c_delta = Variable(c + delta, volatile=True)
+        indices = autoencoder.generate(c_delta, maxlen, sample)
 
-    indices = autoencoder.generate(c_delta, maxlen, sample)
+        target = target.view(-1).cpu().data.numpy()
+        indices = indices.cpu().data.numpy()
 
-    target = target.view(-1).cpu().data.numpy()
-    indices = indices.cpu().data.numpy()
+        if args.test:
+            if not os.path.isdir(args.load_path + '/test'):
+                os.makedirs(args.load_path + '/test')
+            fin = os.path.realpath(args.load_path) + \
+                "/test/input{}.txt".format(epoch)
+        else:
+            if not os.path.isdir(args.load_path + '/train'):
+                os.makedirs(args.load_path + '/train')
+            fin = os.path.realpath(args.load_path) + \
+                "/train/input{}.txt".format(epoch)
 
-    if args.test:
-        if not os.path.isdir(args.load_path + '/test'):
-            os.makedirs(args.load_path + '/test')
-        fin = os.path.realpath(args.load_path) + \
-              "/test/input{}.txt".format(epoch)
-    else:
-        if not os.path.isdir(args.load_path + '/train'):
-            os.makedirs(args.load_path + '/train')
-        fin = os.path.realpath(args.load_path) + \
-              "/train/input{}.txt".format(epoch)
-
-    with open(fin, "w") as f:
-        chars = " ".join([vocab[x] for x in target])
-        f.write(chars.split(' <eos>')[0].split('.')[0] + " .\n")
-
-        for j in range(n_samples):
-            chars = " ".join([vocab[x] for x in indices[j]])
+        with open(fin, "w") as f:
+            chars = " ".join([vocab[x] for x in target])
             f.write(chars.split(' <eos>')[0].split('.')[0] + " .\n")
 
-    return check(fin, epoch)
+            for j in range(n_samples):
+                chars = " ".join([vocab[x] for x in indices[j]])
+                f.write(chars.split(' <eos>')[0].split('.')[0] + " .\n")
+
+        return check(fin, epoch)
 
 
 def check(fin, epoch):
