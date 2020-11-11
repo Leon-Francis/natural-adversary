@@ -508,7 +508,7 @@ def evaluate_autoencoder(data_source, epoch,
 def save_model(args, autoencoder, gan_gen, gan_disc, inverter, epoch=None):
     if not epoch and args.load_pretrained:
         torch.save(inverter.state_dict(), './output/{0}/{1}/inverter_model.pt'.format(args.outf+"/models",epoch))
-    return
+        return
     if epoch and epoch % 5==0:
         print("Saving models")
         if not os.path.isdir('./output/{}'.format(epoch)):
@@ -523,7 +523,6 @@ def save_model(args, autoencoder, gan_gen, gan_disc, inverter, epoch=None):
         torch.save(inverter.state_dict(), './output/{0}/inverter_model.pt'.format(args.outf+"/models"))
         torch.save(gan_gen.state_dict(), './output/{0}/gan_gen_model.pt'.format(args.outf+"/models"))
         torch.save(gan_disc.state_dict(), './output/{0}/gan_disc_model.pt'.format(args.outf+"/models"))
-
 
 def pred_fn(data):
     # query baseline classifiers with sentence pairs
@@ -916,6 +915,7 @@ if __name__ == '__main__':
                                    errD_fake.data.item(), errG.data.item(), errI.data.item()))
 
                     # exponentially decaying noise on autoencoder
+                    #噪声衰减
                     autoencoder.noise_radius = autoencoder.noise_radius * args.noise_anneal
 
                     if niter_global % 30000 == 0:
