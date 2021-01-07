@@ -15,7 +15,7 @@ from torch.autograd import Variable
 from search import search, search_fast
 from utils import to_gpu, Corpus, batchify, SNLIDataset, train_ngram_lm, get_ppl, load_ngram_lm, get_delta, collate_snli
 from models import Seq2Seq, MLP_D, MLP_G, MLP_I, MLP_I_AE, JSDistance, Seq2SeqCAE, Baseline_Embeddings, Baseline_LSTM
-
+import tqdm
 
 def parse_args():
 
@@ -395,6 +395,7 @@ def evaluate_generator(noise, epoch,
     autoencoder.eval()
 
     # generate from fixed random noise
+    # fake_hidden [batch, hidden_size]
     fake_hidden = gan_gen(noise)
     max_indices = autoencoder.generate(fake_hidden, args.maxlen, sample=args.sample)
 
@@ -729,16 +730,30 @@ if __name__ == '__main__':
     print("Vocabulary Size: {}".format(ntokens))
 
     if args.reload_exp or args.load_pretrained:
-        autoencoder = torch.load(cur_dir + '/models/autoencoder_model.pt')
-        gan_gen = torch.load(cur_dir + '/models/gan_gen_model.pt')
-        gan_disc = torch.load(cur_dir + '/models/gan_disc_model.pt')
+        autoencoder = Seq2SeqCAE(emsize=args.emsize,
+                                     nhidden=args.nhidden,
+                                     ntokens=ntokens,
+                                     nlayers=args.nlayers,
+                                     noise_radius=args.noise_radius,
+                                     hidden_init=args.hidden_init,
+                                     dropout=args.dropout,
+                                     conv_layer=args.arch_conv_filters,
+                                     conv_windows=args.arch_conv_windows,
+                                     conv_strides=args.arch_conv_strides,
+                                     gpu=args.cuda)
+        gan_gen = MLP_G(ninput=args.z_size, noutput=args.nhidden, layers=args.arch_g)
+        gan_disc = MLP_D(ninput=args.nhidden, noutput=1, layers=args.arch_d)
+        autoencoder.load_state_dict(torch.load(cur_dir + '/models/autoencoder_model.pt'))
+        gan_gen.load_state_dict(torch.load(cur_dir + '/models/gan_gen_model.pt'))
+        gan_disc.load_state_dict(torch.load(cur_dir + '/models/gan_disc_model.pt'))
         with open(cur_dir + '/vocab.json', 'r') as f:
             corpus.dictionary.word2idx = json.load(f)
 
         if args.load_pretrained:
             inverter = MLP_I(args.nhidden, args.z_size, args.arch_i, gpu=args.cuda)
         else:
-            inverter = torch.load(cur_dir + '/models/inverter_model.pt')
+            inverter = MLP_I_AE(ninput=args.nhidden, noutput=args.z_size, layers=args.arch_i)
+            inverter.load_state_dict(torch.load(cur_dir + '/models/inverter_model.pt'))
     else:
         if args.convolution_enc:
             autoencoder = Seq2SeqCAE(emsize=args.emsize,
