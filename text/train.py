@@ -242,7 +242,7 @@ def train_gan_d(batch,
     # loss / backprop
     fake_hidden = gan_gen(noise)
     errD_fake = gan_disc(fake_hidden.detach())
-    # TODO:debug hear
+
     errD_fake *= -1.0
     errD_fake.backward()
 
